@@ -45,12 +45,20 @@ module_param(delay, long, 0);
 
 #define LIMIT	(PAGE_SIZE-128)	/* don't print any more after this size */
 
+#define KDBG_ON
+#ifdef KDBG_ON
+#define KDBG	printk
+#else
+#define KDBG(...)
+#endif
+
 /*
  * Print information about the current environment. This is called from
  * within the task queues. If the limit is reched, awake the reading
  * process.
  */
 static DECLARE_WAIT_QUEUE_HEAD (jiq_wait);
+static struct timer_list jiq_timer;
 
 /*
  * Keep track of info we need between task queue runs.
@@ -73,7 +81,11 @@ static struct clientdata jiq_data_delayed;
 
 #define DECLARE_SEQ_FILE_OPEN(_n) \
 	static int _n##_open(struct inode *i, struct file *f)	\
-	{return single_open(f, _n##_show , NULL);}
+	{							\
+		KDBG(KERN_NOTICE "open %s : %08x\n", __FUNCTION__,\
+			(unsigned int)PDE_DATA(i));		\
+		return single_open(f, _n##_show , PDE_DATA(i));	\
+	}
 
 #define DECLARE_SEQ_FILE_FO(_n) \
 	static const struct file_operations _n##_fo = {		\
@@ -123,7 +135,7 @@ static int jiq_print(void *ptr)
 static void jiq_print_wq(struct work_struct *w)
 {
 	struct clientdata *data = container_of(w, struct clientdata, w.jiq_work);
-    
+
 	if (! jiq_print (data))
 		return;
     
@@ -134,7 +146,7 @@ static void jiq_print_wq(struct work_struct *w)
 static void jiq_print_wqd(struct work_struct *w)
 {
 	struct clientdata *data = container_of(w, struct clientdata, w.jiq_work_delayed.work);
-    
+
 	if (! jiq_print (data))
 		return;
     
@@ -143,9 +155,9 @@ static void jiq_print_wqd(struct work_struct *w)
 
 static int jiq_read_wq_show(struct seq_file *s, void *data)
 {
-	struct clientdata *d = (clientdata_t *)data;
+	struct clientdata *d = (clientdata_t *)s->private;
 	DEFINE_WAIT(wait);
-	
+
 	d->s = s;
 	d->jiffies = jiffies;      /* initial time */
 	d->delay = 0;
@@ -162,7 +174,7 @@ DECLARE_SEQ_FILE_FO(jiq_read_wq)
 
 static int jiq_read_wq_delayed_show(struct seq_file *s, void *data)
 {
-	struct clientdata *d = (clientdata_t *)data;
+	struct clientdata *d = (clientdata_t *)s->private;
 	DEFINE_WAIT(wait);
 
 	d->s = s;
@@ -192,12 +204,13 @@ static void jiq_print_tasklet(unsigned long ptr)
 
 static int jiq_read_tasklet_show(struct seq_file *s, void *data)
 {
-	struct clientdata *d = (clientdata_t *)data;
+	struct clientdata *d = (clientdata_t *)s->private;
+ 
+	KDBG(KERN_INFO "%s:%08x\n", __FUNCTION__, (unsigned int)d); 
 
 	d->s = s;
 	d->jiffies = jiffies;      /* initial time */
 	d->wakeup = 0;
-
 	tasklet_schedule(&jiq_tasklet);
 	/* when wakeup is 1, then waek-up */
 	wait_event_interruptible(jiq_wait, d->wakeup);    /* sleep till completion */
@@ -213,11 +226,12 @@ DECLARE_SEQ_FILE_FO(jiq_read_tasklet)
  * This one, instead, tests out the timers.
  */
 
-static struct timer_list jiq_timer;
-
 static void jiq_timedout(unsigned long ptr)
 {
 	struct clientdata *d = (void *)ptr;
+ 
+	KDBG(KERN_INFO "%s:%08x\n", __FUNCTION__, (unsigned int)d); 
+
 	jiq_print((void *)d);            /* print a line */
 	d->wakeup = 1;
 	wake_up_interruptible(&jiq_wait);  /* awake the process */
@@ -225,10 +239,12 @@ static void jiq_timedout(unsigned long ptr)
 
 static int jiq_read_run_timer_show(struct seq_file *s, void *data)
 {
-	struct clientdata *d = (clientdata_t *)data;
+	struct clientdata *d = (clientdata_t *)s->private;
 	d->s = s;
 	d->jiffies = jiffies;
 	d->wakeup = 0;
+ 
+	KDBG(KERN_INFO "%s:%08x\n", __FUNCTION__, (unsigned int)d); 
 
 	init_timer(&jiq_timer);              /* init the timer structure */
 	jiq_timer.function = jiq_timedout;
