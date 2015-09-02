@@ -300,6 +300,8 @@ static const struct file_operations fo_jit_tasklet = {
 
 int __init jit_init(void)
 {
+	printk(KERN_ALERT "%s\n", __FUNCTION__);
+
 	proc_create("currentime", 0, NULL, &fo_jit_currenttime);
 	proc_create_data("jitbusy", 0, NULL, &fo_jit_fn, (void *)JIT_BUSY);
 	proc_create_data("jitsched",0, NULL, &fo_jit_fn, (void *)JIT_SCHED);
@@ -315,6 +317,8 @@ int __init jit_init(void)
 
 void __exit jit_cleanup(void)
 {
+	printk(KERN_ALERT "%s\n", __FUNCTION__);
+
 	remove_proc_entry("currentime", NULL);
 	remove_proc_entry("jitbusy", NULL);
 	remove_proc_entry("jitsched", NULL);
